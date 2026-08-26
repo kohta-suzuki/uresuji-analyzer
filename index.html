@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>売れ筋アナライザー</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  :root{
+    --bg:#0d1117; --surface:#161b22; --surface2:#1f2630; --border:#2d333b;
+    --ink:#e6e9ef; --ink2:#9aa4b2; --ink3:#6e7a8a;
+    --accent:#58a6ff; --accent-dim:#1f6feb33; --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+    --radius:12px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    font-size:15px; line-height:1.6; padding-bottom:40px}
+  header{padding:14px 16px 8px}
+  header h1{font-size:18px; margin:0; display:flex; align-items:center; gap:8px}
+  header .sub{color:var(--ink2); font-size:12px}
+  nav{display:flex; gap:6px; overflow-x:auto; padding:8px 12px; position:sticky; top:0;
+    background:linear-gradient(var(--bg) 85%, transparent); z-index:10; scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  nav button{flex:0 0 auto; border:1px solid var(--border); background:var(--surface);
+    color:var(--ink2); border-radius:999px; padding:7px 14px; font-size:13px; cursor:pointer}
+  nav button.active{background:var(--accent-dim); border-color:var(--accent); color:var(--ink); font-weight:600}
+  main{padding:0 12px}
+  section.tab{display:none}
+  section.tab.active{display:block}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:14px; margin:10px 0}
+  .card h2{font-size:14px; margin:0 0 10px; color:var(--ink)}
+  .card h2 .hint{font-weight:400; color:var(--ink3); font-size:11px; margin-left:6px}
+  label{display:block; font-size:12px; color:var(--ink2); margin:8px 0 4px}
+  input[type=text],input[type=number],input[type=url],select{
+    width:100%; background:var(--surface2); color:var(--ink); border:1px solid var(--border);
+    border-radius:8px; padding:10px 12px; font-size:15px}
+  input:focus,select:focus{outline:1px solid var(--accent); border-color:var(--accent)}
+  .row{display:flex; gap:8px}
+  .row>*{flex:1; min-width:0}
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:6px; width:100%;
+    background:var(--accent); color:#04121f; border:none; border-radius:10px;
+    padding:12px; font-size:15px; font-weight:700; cursor:pointer; margin-top:10px}
+  .btn:disabled{opacity:.45}
+  .btn.ghost{background:var(--surface2); color:var(--ink); border:1px solid var(--border); font-weight:500}
+  .btn.small{width:auto; padding:8px 14px; font-size:13px; margin-top:0}
+  .btn.danger{background:transparent; border:1px solid var(--bad); color:var(--bad)}
+  .chip{display:inline-block; background:var(--surface2); border:1px solid var(--border);
+    color:var(--ink2); border-radius:999px; padding:4px 10px; font-size:12px; margin:3px 3px 0 0; cursor:pointer}
+  .chip:active{border-color:var(--accent); color:var(--ink)}
+  .tiles{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
+  .tile{background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:10px 12px}
+  .tile .k{font-size:11px; color:var(--ink2)}
+  .tile .v{font-size:20px; font-weight:700; letter-spacing:.02em}
+  .tile .s{font-size:11px; color:var(--ink3)}
+  .note{font-size:12px; color:var(--ink2); margin-top:8px}
+  .note.warn{color:var(--warn)}
+  .err{color:var(--bad); font-size:13px; white-space:pre-wrap}
+  .banner{background:var(--accent-dim); border:1px solid var(--accent); color:var(--ink);
+    border-radius:10px; padding:8px 12px; font-size:12px; margin:10px 0}
+  /* ヒストグラム */
+  .hist{display:flex; align-items:flex-end; gap:2px; height:120px; margin-top:12px}
+  .hist .bar{flex:1; background:var(--accent); border-radius:4px 4px 0 0; min-height:2px; opacity:.9; cursor:pointer}
+  .hist .bar.sel{background:#9ecbff}
+  .hist-x{display:flex; justify-content:space-between; font-size:10px; color:var(--ink3); margin-top:4px}
+  .hist-cap{font-size:12px; color:var(--ink2); min-height:1.4em; margin-top:6px}
+  /* 横棒 */
+  .hbars .hb{margin:8px 0}
+  .hbars .hb .t{display:flex; justify-content:space-between; font-size:12px; color:var(--ink2)}
+  .hbars .hb .t b{color:var(--ink); font-weight:600}
+  .hbars .hb .bar{height:8px; background:var(--surface2); border-radius:4px; overflow:hidden; margin-top:3px}
+  .hbars .hb .bar i{display:block; height:100%; background:var(--accent); border-radius:4px}
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{text-align:left; color:var(--ink3); font-weight:500; font-size:11px; padding:4px 6px; border-bottom:1px solid var(--border)}
+  td{padding:6px; border-bottom:1px solid var(--border)}
+  td.num,th.num{text-align:right; font-variant-numeric:tabular-nums}
+  /* 商品カード */
+  .items{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin-top:10px}
+  .item{background:var(--surface2); border:1px solid var(--border); border-radius:10px; overflow:hidden;
+    text-decoration:none; color:var(--ink); display:block}
+  .item img{width:100%; aspect-ratio:1; object-fit:cover; background:#0a0d12; display:block}
+  .item .p{padding:8px}
+  .item .ttl{font-size:11px; color:var(--ink2); line-height:1.35; height:3.9em; overflow:hidden}
+  .item .pr{font-size:14px; font-weight:700; margin-top:4px}
+  .item .mt{font-size:10px; color:var(--ink3)}
+  .watch-entry{border-top:1px solid var(--border); padding:10px 0}
+  .watch-entry:first-child{border-top:none}
+  details{margin-top:6px}
+  summary{font-size:12px; color:var(--accent); cursor:pointer}
+  .gone{font-size:12px; color:var(--ink2); padding:2px 0; border-bottom:1px dashed var(--border)}
+  .gone b{color:var(--ink)}
+  footer{color:var(--ink3); text-align:center; font-size:11px; margin-top:30px}
+  a{color:var(--accent)}
+  .linkgrid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:8px}
+  .linkgrid a{display:block; background:var(--surface2); border:1px solid var(--border); border-radius:10px;
+    padding:10px 12px; text-decoration:none; color:var(--ink); font-size:13px; text-align:center}
+  .linkgrid a span{display:block; font-size:10px; color:var(--ink3)}
+  .spin{display:inline-block; width:14px; height:14px; border:2px solid #04121f55; border-top-color:#04121f;
+    border-radius:50%; animation:sp 0.8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📈 売れ筋アナライザー</h1>
+  <div class="sub">eBay・Shopee 市場リサーチ | 相場スカウターの姉妹アプリ</div>
+</header>
+
+<div id="mockBanner" class="banner" style="display:none; margin:0 12px">
+  ⚙️ モックモードで動作中(サンプルデータ)。設定タブでWorker URLを登録すると実データになります。
+</div>
+
+<nav id="nav">
+  <button data-tab="analyze" class="active">分析</button>
+  <button data-tab="watch">定点観測</button>
+  <button data-tab="seller">セラー</button>
+  <button data-tab="trends">トレンド</button>
+  <button data-tab="shopee">Shopee</button>
+  <button data-tab="settings">設定</button>
+</nav>
+
+<main>
+
+<!-- ============ 分析 ============ -->
+<section class="tab active" id="tab-analyze">
+  <div class="card">
+    <h2>キーワード分析 <span class="hint">eBay出品中データから競合と値付けを読む</span></h2>
+    <label>キーワード(英語)</label>
+    <input type="text" id="q" placeholder="例: seiko 5 sports automatic" autocapitalize="off">
+    <div id="chips"></div>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label>販売国(サイト)</label>
+        <select id="marketplace">
+          <option value="EBAY_US">アメリカ (ebay.com)</option>
+          <option value="EBAY_GB">イギリス</option>
+          <option value="EBAY_DE">ドイツ</option>
+          <option value="EBAY_AU">オーストラリア</option>
+          <option value="EBAY_CA">カナダ</option>
+          <option value="EBAY_FR">フランス</option>
+          <option value="EBAY_IT">イタリア</option>
+        </select>
+      </div>
+      <div>
+        <label>販売形式</label>
+        <select id="buying">
+          <option value="">すべて</option>
+          <option value="FIXED_PRICE">固定価格のみ</option>
+          <option value="AUCTION">オークションのみ</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>価格下限($)</label><input type="number" id="pmin" placeholder="なし" min="0"></div>
+      <div><label>価格上限($)</label><input type="number" id="pmax" placeholder="なし" min="0"></div>
+      <div><label>出品地</label>
+        <select id="jponly"><option value="">全世界</option><option value="JP">日本発のみ</option></select>
+      </div>
+    </div>
+    <button class="btn" id="runBtn">分析する</button>
+  </div>
+  <div id="result"></div>
+</section>
+
+<!-- ============ 定点観測 ============ -->
+<section class="tab" id="tab-watch">
+  <div class="card">
+    <h2>定点観測 <span class="hint">再スキャンで「消えた出品≒売れた/終了」を検出</span></h2>
+    <p class="note">分析タブで検索した条件を「定点観測に登録」すると、ここに貯まります。数日おきに「再スキャン」すると、前回から消えた出品の数と価格帯がわかり、回転の速さを推定できます。SoldデータのAPIが個人に開放されていないための代替手段で、出品数が200件以下のニッチなキーワードほど精度が高くなります。</p>
+  </div>
+  <div id="watchList"></div>
+</section>
+
+<!-- ============ セラー ============ -->
+<section class="tab" id="tab-seller">
+  <div class="card">
+    <h2>競合セラー分析 <span class="hint">売れているセラーの品揃えと値付けを観察</span></h2>
+    <label>セラーID (eBayのユーザー名)</label>
+    <input type="text" id="sellerName" placeholder="例: japan_cameras_tokyo" autocapitalize="off">
+    <label>キーワード(英語・必須 ※API仕様)</label>
+    <input type="text" id="sellerQ" placeholder="例: camera lens / watch など広めの語" autocapitalize="off">
+    <label>サイト</label>
+    <select id="sellerMp">
+      <option value="EBAY_US">アメリカ (ebay.com)</option>
+      <option value="EBAY_GB">イギリス</option>
+      <option value="EBAY_DE">ドイツ</option>
+      <option value="EBAY_AU">オーストラリア</option>
+    </select>
+    <button class="btn" id="sellerBtn">セラーを分析</button>
+    <p class="note">セラーIDは、分析タブの結果に出る「上位セラー」からタップでもコピーできます。API仕様上キーワード指定が必須のため、そのセラーの主力ジャンルの広い語(camera, watch等)を入れてください。</p>
+  </div>
+  <div id="sellerResult"></div>
+</section>
+
+<!-- ============ トレンド ============ -->
+<section class="tab" id="tab-trends">
+  <div id="trendsBody"><div class="card"><p class="note">読み込み中…</p></div></div>
+</section>
+
+<!-- ============ Shopee ============ -->
+<section class="tab" id="tab-shopee">
+  <div class="card">
+    <h2>Shopeeリサーチ <span class="hint">売上順ソートで各国の売れ筋を見る</span></h2>
+    <label>キーワード (英語 / 台湾は繁体字中国語が有効)</label>
+    <input type="text" id="shopeeQ" placeholder="例: gundam model kit / 鋼彈模型" autocapitalize="off">
+    <div class="linkgrid" id="shopeeLinks"></div>
+    <p class="note">リンクは各国Shopeeの検索結果を<b>売上順(sortBy=sales)</b>で開きます。ページ上部に「売れた個数(sold)」が表示されるので、月間販売数×価格で市場規模を概算できます。国によってはログインを求められる場合があります。</p>
+  </div>
+  <div class="card">
+    <h2>定番リサーチページ</h2>
+    <div class="linkgrid">
+      <a href="https://shopee.tw/top_products" target="_blank" rel="noopener">台湾 Top Products<span>カテゴリ別売れ筋</span></a>
+      <a href="https://shopee.sg/top_products" target="_blank" rel="noopener">シンガポール Top Products<span>カテゴリ別売れ筋</span></a>
+      <a href="https://shopee.jp/column/" target="_blank" rel="noopener">Shopee Japan コラム<span>公式の人気急上昇商品(月報)</span></a>
+      <a href="https://shopee.jp/" target="_blank" rel="noopener">Shopee Japan<span>出品者向けポータル</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 設定 ============ -->
+<section class="tab" id="tab-settings">
+  <div class="card">
+    <h2>API接続設定</h2>
+    <label>Cloudflare Worker URL</label>
+    <input type="url" id="workerUrl" placeholder="https://xxxx.workers.dev">
+    <div class="row">
+      <button class="btn ghost" id="testBtn">接続テスト</button>
+      <button class="btn" id="saveBtn">保存</button>
+    </div>
+    <p class="note" id="testResult"></p>
+    <p class="note">Worker URLが未設定の間はモックデータ(サンプル)で動きます。eBay APIキー承認後にWorkerを設置し、ここにURLを貼ると実データに切り替わります。設定は端末内(localStorage)にのみ保存されます。</p>
+  </div>
+  <div class="card">
+    <h2>為替</h2>
+    <p class="note" id="fxInfo">USD/JPY: 取得中…</p>
+  </div>
+  <div class="card">
+    <h2>データ管理</h2>
+    <button class="btn danger" id="clearWatch">定点観測データを全消去</button>
+    <p class="note" id="clearNote"></p>
+  </div>
+</section>
+
+</main>
+
+<footer>売れ筋アナライザー version 1 (2026-08-26)</footer>
+
+<script>
+'use strict';
+/* ================= 状態と設定 ================= */
+const LS = {
+  cfg: 'ua_cfg', watch: 'ua_watch', fx: 'ua_fx',
+};
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
+};
+let cfg = store.get(LS.cfg, { workerUrl: '', marketplace: 'EBAY_US' });
+let fxRate = null; // USD/JPY
+let lastAnalysis = null; // 直近の分析結果(定点観測登録用)
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ================= タブ ================= */
+document.querySelectorAll('#nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('section.tab').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    $('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'trends') loadTrends();
+    if (btn.dataset.tab === 'watch') renderWatchList();
+  });
+});
+
+/* ================= API ================= */
+function isMock(){ return !cfg.workerUrl; }
+
+async function apiSearch(params){
+  if (isMock()) return mockSearch(params);
+  const u = new URL(cfg.workerUrl.replace(/\/$/, '') + '/search');
+  Object.entries(params).forEach(([k, v]) => { if (v !== '' && v != null) u.searchParams.set(k, v); });
+  const res = await fetch(u);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || (data.errors && data.errors[0] && data.errors[0].message) || ('HTTP ' + res.status));
+  return data;
+}
+
+function buildFilter({buying, pmin, pmax, jp}){
+  const f = [];
+  if (buying) f.push(`buyingOptions:{${buying}}`);
+  if (pmin || pmax) f.push(`price:[${pmin || ''}..${pmax || ''}],priceCurrency:USD`);
+  if (jp) f.push('itemLocationCountry:JP');
+  return f.join(',');
+}
+
+function normItems(data){
+  return (data.itemSummaries || []).map(it => {
+    const price = it.price ? Number(it.price.value) : null;
+    const cur = it.price ? it.price.currency : '';
+    let ship = null;
+    if (it.shippingOptions && it.shippingOptions[0] && it.shippingOptions[0].shippingCost)
+      ship = Number(it.shippingOptions[0].shippingCost.value);
+    return {
+      id: it.itemId,
+      title: it.title || '',
+      price, cur, ship,
+      cond: it.condition || '不明',
+      country: (it.itemLocation && it.itemLocation.country) || '?',
+      seller: (it.seller && it.seller.username) || '?',
+      fb: (it.seller && it.seller.feedbackScore) || 0,
+      url: it.itemWebUrl || '#',
+      img: (it.image && it.image.imageUrl) || (it.thumbnailImages && it.thumbnailImages[0] && it.thumbnailImages[0].imageUrl) || '',
+      opt: (it.buyingOptions || []).join('/'),
+    };
+  }).filter(x => x.price != null);
+}
+
+/* ================= 統計 ================= */
+function quantile(sorted, p){
+  if (!sorted.length) return 0;
+  const i = (sorted.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+function stats(items){
+  const ps = items.map(i => i.price).sort((a, b) => a - b);
+  return {
+    n: ps.length, min: ps[0] || 0, max: ps[ps.length - 1] || 0,
+    med: quantile(ps, .5), q1: quantile(ps, .25), q3: quantile(ps, .75),
+  };
+}
+function fmt$(v, cur){
+  const sym = (!cur || cur === 'USD') ? '$' : cur + ' ';
+  return sym + Number(v).toLocaleString('en-US', {maximumFractionDigits: v >= 100 ? 0 : 2});
+}
+function yen(vUsd){
+  if (fxRate == null) return '';
+  return '≈ ¥' + Math.round(vUsd * fxRate).toLocaleString('ja-JP');
+}
+
+/* ================= 分析タブ ================= */
+const PRESET_CHIPS = ['seiko watch','pokemon card japanese','canon film camera','anime figure','fishing reel shimano','fountain pen','game boy','vintage lens'];
+$('chips').innerHTML = PRESET_CHIPS.map(c => `<span class="chip" data-q="${esc(c)}">${esc(c)}</span>`).join('');
+$('chips').addEventListener('click', e => {
+  const q = e.target.dataset && e.target.dataset.q;
+  if (q){ $('q').value = q; runAnalysis(); }
+});
+$('marketplace').value = cfg.marketplace || 'EBAY_US';
+$('runBtn').addEventListener('click', runAnalysis);
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') runAnalysis(); });
+
+async function runAnalysis(){
+  const q = $('q').value.trim();
+  if (!q){ $('result').innerHTML = '<div class="card"><p class="err">キーワードを入れてください</p></div>'; return; }
+  const btn = $('runBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> 取得中…';
+  const marketplace = $('marketplace').value;
+  const filter = buildFilter({ buying: $('buying').value, pmin: $('pmin').value, pmax: $('pmax').value, jp: $('jponly').value });
+  try {
+    const data = await apiSearch({ q, marketplace, limit: 200, filter });
+    const items = normItems(data);
+    const total = data.total ?? items.length;
+    lastAnalysis = { q, marketplace, filter, items, total, t: new Date().toISOString() };
+    renderAnalysis(lastAnalysis);
+  } catch (e) {
+    $('result').innerHTML = `<div class="card"><p class="err">取得エラー:\n${esc(e.message)}</p></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '分析する';
+  }
+}
+
+function renderAnalysis(a){
+  const { items, total, q } = a;
+  if (!items.length){ $('result').innerHTML = '<div class="card"><p class="note">該当する出品がありません</p></div>'; return; }
+  const st = stats(items);
+  const jp = items.filter(i => i.country === 'JP').length;
+  const freeShip = items.filter(i => i.ship === 0).length;
+  const auction = items.filter(i => i.opt.includes('AUCTION')).length;
+  const cur = items[0].cur;
+
+  // ヒストグラム(12ビン)
+  const BINS = 12;
+  const lo = st.min, hi = Math.max(st.max, lo + 1);
+  const w = (hi - lo) / BINS;
+  const bins = Array.from({length: BINS}, () => 0);
+  items.forEach(i => bins[Math.min(BINS - 1, Math.floor((i.price - lo) / w))]++);
+  const bmax = Math.max(...bins, 1);
+  const histBars = bins.map((c, ix) =>
+    `<div class="bar" style="height:${Math.max(2, c / bmax * 100)}%" data-i="${ix}" data-c="${c}" data-r="${fmt$(lo + w * ix, cur)}〜${fmt$(lo + w * (ix + 1), cur)}"></div>`).join('');
+
+  // コンディション/上位セラー
+  const condCount = {}; items.forEach(i => condCount[i.cond] = (condCount[i.cond] || 0) + 1);
+  const conds = Object.entries(condCount).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const sellerCount = {}; items.forEach(i => { (sellerCount[i.seller] = sellerCount[i.seller] || {n: 0, fb: i.fb, jp: i.country === 'JP'}).n++; });
+  const sellers = Object.entries(sellerCount).sort((a, b) => b[1].n - a[1].n).slice(0, 8);
+
+  const capped = total > items.length;
+  $('result').innerHTML = `
+  <div class="card">
+    <h2>「${esc(q)}」の市場サマリー</h2>
+    <div class="tiles">
+      <div class="tile"><div class="k">出品数(競合の多さ)</div><div class="v">${total.toLocaleString()}</div><div class="s">${capped ? `統計は先頭${items.length}件で計算` : '全件で計算'}</div></div>
+      <div class="tile"><div class="k">価格 中央値</div><div class="v">${fmt$(st.med, cur)}</div><div class="s">${cur === 'USD' ? yen(st.med) : ''}</div></div>
+      <div class="tile"><div class="k">中心価格帯(50%)</div><div class="v" style="font-size:15px">${fmt$(st.q1, cur)}〜${fmt$(st.q3, cur)}</div><div class="s">min ${fmt$(st.min, cur)} / max ${fmt$(st.max, cur)}</div></div>
+      <div class="tile"><div class="k">日本発セラー</div><div class="v">${Math.round(jp / items.length * 100)}%</div><div class="s">${jp}/${items.length}件</div></div>
+      <div class="tile"><div class="k">送料無料</div><div class="v">${Math.round(freeShip / items.length * 100)}%</div><div class="s">送料込み値付けが標準か</div></div>
+      <div class="tile"><div class="k">オークション率</div><div class="v">${Math.round(auction / items.length * 100)}%</div><div class="s">高いほど相場が流動的</div></div>
+    </div>
+    <div class="hist" id="hist">${histBars}</div>
+    <div class="hist-x"><span>${fmt$(lo, cur)}</span><span>価格分布(タップで詳細)</span><span>${fmt$(hi, cur)}</span></div>
+    <div class="hist-cap" id="histCap"></div>
+    <button class="btn ghost" id="addWatchBtn">📌 この条件を定点観測に登録</button>
+  </div>
+  <div class="card">
+    <h2>コンディション内訳</h2>
+    <div class="hbars">${conds.map(([k, v]) => `
+      <div class="hb"><div class="t"><span>${esc(k)}</span><b>${v}件 (${Math.round(v / items.length * 100)}%)</b></div>
+      <div class="bar"><i style="width:${v / items.length * 100}%"></i></div></div>`).join('')}
+    </div>
+  </div>
+  <div class="card">
+    <h2>上位セラー <span class="hint">タップでセラー分析へ</span></h2>
+    <table><tr><th>セラー</th><th class="num">出品数</th><th class="num">評価数</th><th>日本</th></tr>
+      ${sellers.map(([name, s]) => `<tr class="sellerRow" data-s="${esc(name)}" style="cursor:pointer">
+        <td style="color:var(--accent)">${esc(name)}</td><td class="num">${s.n}</td><td class="num">${s.fb.toLocaleString()}</td><td>${s.jp ? '🇯🇵' : ''}</td></tr>`).join('')}
+    </table>
+  </div>
+  <div class="card">
+    <h2>出品例 <span class="hint">安い順に30件</span></h2>
+    <div class="items">${items.slice().sort((x, y) => x.price - y.price).slice(0, 30).map(i => `
+      <a class="item" href="${esc(i.url)}" target="_blank" rel="noopener">
+        ${i.img ? `<img loading="lazy" src="${esc(i.img)}" alt="">` : '<div style="aspect-ratio:1;background:#0a0d12"></div>'}
+        <div class="p"><div class="ttl">${esc(i.title)}</div>
+        <div class="pr">${fmt$(i.price, i.cur)}${i.ship ? ` <span class="mt">+送料${fmt$(i.ship, i.cur)}</span>` : (i.ship === 0 ? ' <span class="mt">送料無料</span>' : '')}</div>
+        <div class="mt">${esc(i.cond)} ${i.country === 'JP' ? '🇯🇵' : esc(i.country)}</div></div>
+      </a>`).join('')}
+    </div>
+  </div>`;
+
+  $('hist').addEventListener('click', e => {
+    const b = e.target.closest('.bar'); if (!b) return;
+    document.querySelectorAll('#hist .bar').forEach(x => x.classList.remove('sel'));
+    b.classList.add('sel');
+    $('histCap').textContent = `${b.dataset.r} : ${b.dataset.c}件`;
+  });
+  $('addWatchBtn').addEventListener('click', addToWatch);
+  document.querySelectorAll('.sellerRow').forEach(r => r.addEventListener('click', () => {
+    $('sellerName').value = r.dataset.s;
+    $('sellerQ').value = a.q;
+    $('sellerMp').value = a.marketplace;
+    document.querySelector('#nav button[data-tab=seller]').click();
+  }));
+}
+
+/* ================= 定点観測 ================= */
+function snapshotOf(a){
+  const map = {};
+  a.items.forEach(i => map[i.id] = i.price);
+  return { t: a.t, total: a.total, items: map };
+}
+function addToWatch(){
+  if (!lastAnalysis) return;
+  const list = store.get(LS.watch, []);
+  const key = `${lastAnalysis.q}|${lastAnalysis.marketplace}|${lastAnalysis.filter}`;
+  let entry = list.find(w => w.key === key);
+  if (!entry){
+    entry = { key, q: lastAnalysis.q, marketplace: lastAnalysis.marketplace, filter: lastAnalysis.filter, snapshots: [] };
+    list.push(entry);
+  }
+  entry.snapshots.push(snapshotOf(lastAnalysis));
+  if (entry.snapshots.length > 10) entry.snapshots = entry.snapshots.slice(-10);
+  store.set(LS.watch, list);
+  $('addWatchBtn').textContent = '✅ 登録しました(定点観測タブへ)';
+}
+
+function renderWatchList(){
+  const list = store.get(LS.watch, []);
+  if (!list.length){ $('watchList').innerHTML = '<div class="card"><p class="note">まだ登録がありません。分析タブから登録してください。</p></div>'; return; }
+  $('watchList').innerHTML = `<div class="card">` + list.map((w, ix) => {
+    const last = w.snapshots[w.snapshots.length - 1];
+    const first = w.snapshots[0];
+    const days = w.snapshots.length > 1 ? ((new Date(last.t) - new Date(first.t)) / 864e5).toFixed(1) : 0;
+    let diffHtml = '';
+    if (w.snapshots.length > 1){
+      const prev = w.snapshots[w.snapshots.length - 2];
+      const gonePrices = Object.keys(prev.items).filter(id => !(id in last.items)).map(id => prev.items[id]);
+      const added = Object.keys(last.items).filter(id => !(id in prev.items)).length;
+      const d = Math.max((new Date(last.t) - new Date(prev.t)) / 864e5, 0.01);
+      const perWeek = (gonePrices.length / d * 7).toFixed(1);
+      const gs = gonePrices.slice().sort((a, b) => a - b);
+      const med = gs.length ? quantile(gs, .5) : 0;
+      diffHtml = `<p class="note">前回(${d.toFixed(1)}日前)から: <b style="color:var(--ok)">${gonePrices.length}件が消滅</b>(売れた/終了) ≒ 週${perWeek}件ペース / 新規${added}件<br>
+        ${gs.length ? `消えた出品の価格: 中央値 ${fmt$(med, 'USD')} (${fmt$(gs[0], 'USD')}〜${fmt$(gs[gs.length - 1], 'USD')})` : ''}</p>
+        ${gs.length ? `<details><summary>消えた出品の価格一覧</summary>${gs.map(p => `<div class="gone"><b>${fmt$(p, 'USD')}</b></div>`).join('')}</details>` : ''}`;
+      if (last.total > 200) diffHtml += `<p class="note warn">⚠️ 出品数が200件超のため取得できていない範囲があり、消滅数は過大に出ることがあります。絞り込み条件を足すと精度が上がります。</p>`;
+    } else {
+      diffHtml = `<p class="note">スナップショットが1つだけです。数日後に「再スキャン」すると差分が出ます。</p>`;
+    }
+    return `<div class="watch-entry">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div><b>${esc(w.q)}</b> <span class="note" style="display:inline">${esc(w.marketplace.replace('EBAY_', ''))}${w.filter ? ' / 絞込あり' : ''}</span><br>
+        <span class="note">記録${w.snapshots.length}回 / 直近出品数${last.total.toLocaleString()}件 ${days > 0 ? `/ 観測${days}日` : ''}</span></div>
+        <button class="btn small" data-rescan="${ix}">再スキャン</button>
+      </div>
+      ${diffHtml}
+      <button class="btn small danger" data-del="${ix}" style="margin-top:6px">削除</button>
+    </div>`;
+  }).join('') + `</div>`;
+
+  document.querySelectorAll('[data-rescan]').forEach(b => b.addEventListener('click', () => rescan(Number(b.dataset.rescan), b)));
+  document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.confirmed){
+      const list2 = store.get(LS.watch, []); list2.splice(Number(b.dataset.del), 1); store.set(LS.watch, list2); renderWatchList();
+    } else { b.dataset.confirmed = '1'; b.textContent = 'もう一度タップで削除'; }
+  }));
+}
+
+async function rescan(ix, btn){
+  const list = store.get(LS.watch, []);
+  const w = list[ix]; if (!w) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+  try {
+    const data = await apiSearch({ q: w.q, marketplace: w.marketplace, limit: 200, filter: w.filter });
+    const items = normItems(data);
+    const a = { items, total: data.total ?? items.length, t: new Date().toISOString() };
+    w.snapshots.push(snapshotOf(a));
+    if (w.snapshots.length > 10) w.snapshots = w.snapshots.slice(-10);
+    store.set(LS.watch, list);
+    renderWatchList();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'エラー: ' + e.message.slice(0, 40);
+  }
+}
+
+/* ================= セラー分析 ================= */
+$('sellerBtn').addEventListener('click', runSeller);
+async function runSeller(){
+  const s = $('sellerName').value.trim();
+  const q = $('sellerQ').value.trim();
+  if (!s || !q){ $('sellerResult').innerHTML = '<div class="card"><p class="err">セラーIDとキーワードの両方を入れてください</p></div>'; return; }
+  const btn = $('sellerBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> 取得中…';
+  try {
+    const filter = `sellers:{${s}}`;
+    const data = await apiSearch({ q, marketplace: $('sellerMp').value, limit: 200, filter });
+    const items = normItems(data);
+    if (!items.length){ $('sellerResult').innerHTML = '<div class="card"><p class="note">このキーワードでは出品が見つかりません。より広い語を試してください。</p></div>'; return; }
+    const st = stats(items);
+    const cur = items[0].cur;
+    const fb = items[0].fb;
+    const condCount = {}; items.forEach(i => condCount[i.cond] = (condCount[i.cond] || 0) + 1);
+    const conds = Object.entries(condCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    $('sellerResult').innerHTML = `
+    <div class="card">
+      <h2>${esc(s)} の「${esc(q)}」出品</h2>
+      <div class="tiles">
+        <div class="tile"><div class="k">該当出品数</div><div class="v">${(data.total ?? items.length).toLocaleString()}</div><div class="s">評価数 ${fb.toLocaleString()}</div></div>
+        <div class="tile"><div class="k">価格 中央値</div><div class="v">${fmt$(st.med, cur)}</div><div class="s">${fmt$(st.q1, cur)}〜${fmt$(st.q3, cur)}が中心</div></div>
+      </div>
+      <div class="hbars">${conds.map(([k, v]) => `
+        <div class="hb"><div class="t"><span>${esc(k)}</span><b>${v}件</b></div>
+        <div class="bar"><i style="width:${v / items.length * 100}%"></i></div></div>`).join('')}</div>
+      <p class="note">値付け・タイトルの書き方・送料設定を観察して、自分の出品の参考にしましょう。</p>
+      <div class="items">${items.slice(0, 30).map(i => `
+        <a class="item" href="${esc(i.url)}" target="_blank" rel="noopener">
+          ${i.img ? `<img loading="lazy" src="${esc(i.img)}" alt="">` : '<div style="aspect-ratio:1;background:#0a0d12"></div>'}
+          <div class="p"><div class="ttl">${esc(i.title)}</div>
+          <div class="pr">${fmt$(i.price, i.cur)}</div>
+          <div class="mt">${esc(i.cond)}</div></div>
+        </a>`).join('')}
+      </div>
+    </div>`;
+  } catch (e) {
+    $('sellerResult').innerHTML = `<div class="card"><p class="err">取得エラー:\n${esc(e.message)}</p></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'セラーを分析';
+  }
+}
+
+/* ================= トレンド ================= */
+let trendsLoaded = false;
+async function loadTrends(){
+  if (trendsLoaded) return;
+  try {
+    const res = await fetch('trends.json?v=' + Date.now());
+    const t = await res.json();
+    $('trendsBody').innerHTML = `
+      <div class="card"><h2>売れ筋トレンド <span class="hint">Claudeの定期調査 / 更新: ${esc(t.updated)}</span></h2></div>` +
+      t.sections.map(sec => `
+      <div class="card"><h2>${esc(sec.title)}</h2>
+        ${sec.items.map(i => `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
+          <b>${esc(i.name)}</b><br><span class="note" style="margin:0">${esc(i.note)}</span></div>`).join('')}
+      </div>`).join('') +
+      `<div class="card"><h2>出典</h2>${(t.sources || []).map(s => `<p class="note" style="margin:2px 0"><a href="${esc(s)}" target="_blank" rel="noopener">${esc(s)}</a></p>`).join('')}</div>`;
+    trendsLoaded = true;
+  } catch (e) {
+    $('trendsBody').innerHTML = '<div class="card"><p class="note">トレンドデータを読み込めませんでした(オフライン?)</p></div>';
+  }
+}
+
+/* ================= Shopee ================= */
+const SHOPEE_MARKETS = [
+  ['台湾', 'shopee.tw', '日本セラーの主戦場'],
+  ['シンガポール', 'shopee.sg', '英語でOK'],
+  ['マレーシア', 'shopee.com.my', '英語OK'],
+  ['タイ', 'shopee.co.th', 'タイ語圏'],
+  ['フィリピン', 'shopee.ph', '英語OK'],
+  ['ベトナム', 'shopee.vn', 'ベトナム語圏'],
+];
+function renderShopeeLinks(){
+  const q = encodeURIComponent($('shopeeQ').value.trim());
+  $('shopeeLinks').innerHTML = SHOPEE_MARKETS.map(([name, host, note]) =>
+    `<a href="https://${host}/search?keyword=${q}&sortBy=sales" target="_blank" rel="noopener">${name} 売上順<span>${note}</span></a>`).join('');
+}
+$('shopeeQ').addEventListener('input', renderShopeeLinks);
+renderShopeeLinks();
+
+/* ================= 設定 ================= */
+$('workerUrl').value = cfg.workerUrl || '';
+$('saveBtn').addEventListener('click', () => {
+  cfg.workerUrl = $('workerUrl').value.trim();
+  cfg.marketplace = $('marketplace').value;
+  store.set(LS.cfg, cfg);
+  $('testResult').textContent = '保存しました。' + (cfg.workerUrl ? '実データモードで動きます。' : 'モックモードに戻りました。');
+  updateMockBanner();
+});
+$('testBtn').addEventListener('click', async () => {
+  const u = $('workerUrl').value.trim().replace(/\/$/, '');
+  if (!u){ $('testResult').textContent = 'URLを入れてください'; return; }
+  $('testResult').textContent = '確認中…';
+  try {
+    const res = await fetch(u + '/health');
+    const d = await res.json();
+    $('testResult').textContent = d.ok ? (d.hasKeys ? '✅ 接続OK・APIキー設定済み' : '⚠️ 接続できましたがWorkerにAPIキー(Secret)が未設定です') : '応答が不正です';
+  } catch (e) {
+    $('testResult').textContent = '❌ 接続できません: ' + e.message;
+  }
+});
+$('clearWatch').addEventListener('click', function(){
+  if (this.dataset.confirmed){
+    store.set(LS.watch, []); $('clearNote').textContent = '消去しました'; this.textContent = '定点観測データを全消去'; delete this.dataset.confirmed;
+    renderWatchList();
+  } else { this.dataset.confirmed = '1'; this.textContent = 'もう一度タップで完全消去'; }
+});
+function updateMockBanner(){ $('mockBanner').style.display = isMock() ? '' : 'none'; }
+updateMockBanner();
+
+/* ================= 為替 ================= */
+(async function loadFx(){
+  const cached = store.get(LS.fx, null);
+  if (cached && Date.now() - cached.t < 12 * 3600e3){ fxRate = cached.r; $('fxInfo').textContent = `USD/JPY: ${fxRate} (キャッシュ)`; return; }
+  try {
+    const r = await fetch('https://api.frankfurter.dev/v1/latest?base=USD&symbols=JPY').then(x => x.json());
+    fxRate = r.rates.JPY;
+  } catch (e) {
+    try {
+      const r = await fetch('https://open.er-api.com/v6/latest/USD').then(x => x.json());
+      fxRate = r.rates.JPY;
+    } catch (e2) { /* オフライン */ }
+  }
+  if (fxRate){ store.set(LS.fx, {r: fxRate, t: Date.now()}); $('fxInfo').textContent = `USD/JPY: ${fxRate}`; }
+  else $('fxInfo').textContent = 'USD/JPY: 取得できませんでした';
+})();
+
+/* ================= モックデータ ================= */
+function mulberry(seed){ return function(){ seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function mockSearch(params){
+  const rnd = mulberry(Array.from(params.q || 'x').reduce((a, c) => a + c.charCodeAt(0), 0));
+  const n = 40 + Math.floor(rnd() * 120);
+  const conds = ['Used', 'Used', 'Used', 'New', 'Open box', 'For parts or not working'];
+  const countries = ['JP', 'JP', 'JP', 'US', 'US', 'GB', 'DE', 'AU'];
+  const sellers = ['tokyo_hobby_jp', 'japan_select_store', 'osaka_camera', 'us_collector99', 'brit_deals', 'jp_vintage_pro'];
+  const base = 20 + rnd() * 150;
+  const items = Array.from({length: n}, (_, i) => {
+    const price = Math.round((base * (0.4 + rnd() * 2.2)) * 100) / 100;
+    const seller = sellers[Math.floor(rnd() * sellers.length)];
+    return {
+      itemId: 'v1|MOCK' + i + '|0',
+      title: `${params.q} - sample item #${i + 1} (Japan import, tested & working)`,
+      price: { value: String(price), currency: 'USD' },
+      shippingOptions: [{ shippingCost: { value: rnd() < 0.5 ? '0' : String(Math.round(rnd() * 25)), currency: 'USD' } }],
+      condition: conds[Math.floor(rnd() * conds.length)],
+      itemLocation: { country: countries[Math.floor(rnd() * countries.length)] },
+      seller: { username: seller, feedbackScore: 100 + Math.floor(rnd() * 9000) },
+      itemWebUrl: 'https://www.ebay.com/',
+      image: { imageUrl: '' },
+      buyingOptions: [rnd() < 0.2 ? 'AUCTION' : 'FIXED_PRICE'],
+    };
+  });
+  return new Promise(res => setTimeout(() => res({ total: n + Math.floor(rnd() * 400), itemSummaries: items }), 400));
+}
+</script>
+</body>
+</html>
